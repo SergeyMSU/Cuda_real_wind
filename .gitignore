@@ -1,0 +1,10 @@
+
+.vs/Cuda_real_wind/v16/
+
+*.sln
+
+*.user
+
+x64/Debug/
+
+*.vcxproj
