@@ -318,7 +318,7 @@ __device__ double HLLDQ_Korolkov(const double& ro_L, const double& Q_L, const do
     const double& Bx_L, const double& By_L, const double& Bz_L, const double& ro_R, const double& Q_R, const double& p_R, const double& v1_R, const double& v2_R, const double& v3_R,//
     const double& Bx_R, const double& By_R, const double& Bz_R, double* P, double& PQ, const double& n1, const double& n2, const double& n3, double& rad, int metod)
 {// Не работает, если скорость грани не нулевая
- // Нормаль здесь единичная по осям координат ! (иначе нужно немного переделывать)
+ // Нормаль здесь единичная по осям координат ! (иначе нужно немного переделывать определение векторов)
 
     double bx_L = Bx_L / spi4;
     double by_L = By_L / spi4;
