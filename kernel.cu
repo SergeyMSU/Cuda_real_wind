@@ -22,7 +22,7 @@
 #define ggg (5.0/3.0)
 #define kv(x) ((x)*(x))
 #define kvv(x,y,z)  (kv(x) + kv(y) + kv(z))
-#define U8(ro, p, u, v, w, bx, by, bz)  (p / (ggg - 1.0) + 0.5 * ro * kvv(u,v,w) + kvv(bx,by,bz) / cpi8)
+#define U8(ro, p, u, v, w, bx, by, bz)  ( (p) / (ggg - 1.0) + 0.5 * (ro) * kvv((u),(v),(w)) + kvv((bx),(by),(bz)) / cpi8)
 #define skk(u,v,w,bx,by,bz) (u*bx + v*by + w*bz)
 #define g1 (ga - 1.0)
 #define gg1 (ga - 1.0)
@@ -49,6 +49,7 @@
 
 #define a_2 0.162294  // 0.10263
 #define sigma(x) (kv(1.0 - a_2 * log(x)))
+#define br(x) (0.0/( (x) * (x) )) // (0.155895/( (x) * (x) ))
 
 #define c_H 0.0391451
 #define v_H -0.0704
@@ -316,7 +317,7 @@ __device__ double HLLC_2d_Korolkov_b_s(const double& ro_L, const double& Q_L, co
 
 __device__ double HLLDQ_Korolkov(const double& ro_L, const double& Q_L, const double& p_L, const double& v1_L, const double& v2_L, const double& v3_L,//
     const double& Bx_L, const double& By_L, const double& Bz_L, const double& ro_R, const double& Q_R, const double& p_R, const double& v1_R, const double& v2_R, const double& v3_R,//
-    const double& Bx_R, const double& By_R, const double& Bz_R, double* P, double& PQ, const double& n1, const double& n2, const double& n3, double& rad, int metod)
+    const double& Bx_R, const double& By_R, const double& Bz_R, double* P, double& PQ, const double& n1, const double& n2, const double& n3, const double& rad, int metod)
 {// Не работает, если скорость грани не нулевая
  // Нормаль здесь единичная по осям координат ! (иначе нужно немного переделывать определение векторов)
 
@@ -601,6 +602,11 @@ __device__ double HLLDQ_Korolkov(const double& ro_L, const double& Q_L, const do
 
         if (SL >= 0.0)
         {
+            /*if (ro_L * kv(u1 - SL) / kv(bn1) <= 1.0 || ro_R * kv(u2 - SL) / kv(bn2) <= 1.0)
+            {
+                printf("%lf    __    %lf\n", ro_L * kv(u1 - SL) / kv(bn1), ro_R * kv(u2 - SL) / kv(bn2));
+            }*/
+
             for (int i = 0; i < 9; i++)
             {
                 PO[i] = FL[i];
@@ -925,6 +931,34 @@ void takeDataOmni(double* ro, double* p, double* u, double* t, int n1, int n2)
     fout1.close();
 }
 
+void takeDataOmni2(double* ro, double* p, double* u, double* v, double* w, double* t, int n1, int n2)
+{
+    // Здесь магнитные поля не загружаются, нас интересуют только скорости
+    ifstream fout1;
+    fout1.open("omni_all_data_hour_mgd.txt"); // omni_all_data.txt   omni_all_data_hour.txt     omni_all_data_day.txt
+    int a1, a2, a3, a4, a5;
+    double b1, b2, b3, b4, b5, b6, b7, b8, b9;
+    string s1, s2, s3, s4, s5, s6, s7, s8, s9, s10;
+    fout1 >> s1 >> s2 >> s3 >> s4 >> s5 >> s6 >> s7 >> s8 >> s9 >> s10;
+    cout << s1 << endl;
+    for (int i = 0; i < n2; i++)
+    {
+        fout1 >> a1 >> b1 >> b2 >> b3 >> b4 >> b5 >> b6 >> b7 >> b8 >> b9;
+    }
+
+    for (int i = 0; i < n1; i++)
+    {
+        fout1 >> a1 >> b1 >> b2 >> b3 >> b4 >> b5 >> b6 >> b7 >> b8 >> b9;
+        t[i] = a1 * minut;
+        u[i] = b7 / 375.0;
+        v[i] = b8 / 375.0;
+        w[i] = b9 / 375.0;
+        ro[i] = b5 / 7.0;
+        p[i] = 2.0 * ro[i] * b4 * 5.86922 * 0.00000001;
+    }
+    fout1.close();
+}
+
 __global__ void takeOmni(double* ro, double* p, double* ro_p, double* p_p, double* u, double* RO, double* P, double* U, double* T, double* t_now, int* dev_mas_Omni)
 {
     //printf("Omni 2,   %lf,   %lf,   %d \n", T[0], *t_now, *dev_mas_Omni);
@@ -935,6 +969,30 @@ __global__ void takeOmni(double* ro, double* p, double* ro_p, double* p_p, doubl
             *dev_mas_Omni = k;
             ro[0] = linear(T[k - 1], RO[k - 1], T[k], RO[k], *t_now);
             u[0] = linear(T[k - 1], U[k - 1], T[k], U[k], *t_now);
+            p[0] = linear(T[k - 1], P[k - 1], T[k], P[k], *t_now);
+            ro_p[0] = ro[0]; // 0.000001;
+            p_p[0] = p[0];
+            //printf("Omni,   %lf,   %lf,   %lf,  %d \n", T[k], *t_now, T[k - 1], *dev_mas_Omni);
+            break;
+        }
+    }
+
+}
+
+__global__ void takeOmni2(double* ro, double* p, double* ro_p, double* p_p, double* u, double* v, double* w,//
+    double* RO, double* P, double* U, double* V, double* W, double* T, double* t_now, int* dev_mas_Omni)
+{
+    // Дополнительно берутся ещё и боковые компоненты скорости
+    //printf("Omni 2,   %lf,   %lf,   %d \n", T[0], *t_now, *dev_mas_Omni);
+    for (int k = *dev_mas_Omni; k < Omni_; k++)
+    {
+        if (T[k] >= *t_now && k >= 1)
+        {
+            *dev_mas_Omni = k;
+            ro[0] = linear(T[k - 1], RO[k - 1], T[k], RO[k], *t_now);
+            u[0] = linear(T[k - 1], U[k - 1], T[k], U[k], *t_now);
+            v[0] = linear(T[k - 1], V[k - 1], T[k], V[k], *t_now);
+            w[0] = linear(T[k - 1], W[k - 1], T[k], W[k], *t_now);
             p[0] = linear(T[k - 1], P[k - 1], T[k], P[k], *t_now);
             ro_p[0] = ro[0]; // 0.000001;
             p_p[0] = p[0];
@@ -1420,6 +1478,316 @@ __global__ void calcul_component(double* ro, double* u, double* p, double* ro2, 
 
 }
 
+__global__ void calcul_component_mgd(double* ro, double* u, double* p, double* ro2, double* u2, double* p2, double* ro_p, double* ro_p2, double* p_p, double* p_p2,//
+    double* by, double* by2, double* T, double* T_do, int* N)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;   // Глобальный индекс текущей ячейки (текущего потока)
+
+    if (i >= *N)
+    {
+        return;
+    }
+
+    if (i == 0) // Жёсткие граничные условия
+    {
+        ro2[0] = ro[0];
+        p2[0] = p[0];
+        u2[0] = u[0];
+        ro_p2[0] = ro_p[0];
+        p_p2[0] = p_p[0];
+        by2[0] = by[0];
+        return;
+    }
+
+    if (i == *N - 1) // Мягкие граничные условия
+    {
+        ro2[*N - 1] = ro[*N - 2];
+        p2[*N - 1] = p[*N - 2];
+        u2[*N - 1] = u[*N - 2];
+
+        ro_p2[*N - 1] = ro_p[*N - 2];
+        p_p2[*N - 1] = p_p[*N - 2];
+        by2[*N - 1] = by[*N - 2];
+        return;
+    }
+
+    double P[8] = { 0.0 };
+    double r = L + i * dx;
+    double B1 = 0.0;
+    double B2 = 0.0;
+    double B3 = 0.0;
+    double B4 = 0.0;
+    double Bp1 = 0.0;
+    double Bp2 = 0.0;
+    double Bp3 = 0.0;
+    double Bp4 = 0.0;
+    double B_pi1 = 0.0;
+    double B_p3 = 0.0;
+    double time2 = 0.3 * minut;  // 0.3
+    double ro1 = ro[i];
+    double p1 = p[i];
+    double ro_p1 = ro_p[i];
+    double p_p1 = p_p[i];
+    double u1 = u[i];
+    double ro3 = ro[i + 1];
+    double p3 = p[i + 1];
+    double ro_p3 = ro_p[i + 1];
+    double p_p3 = p_p[i + 1];
+    double u3 = u[i + 1];
+    double ro4 = ro[i - 1];
+    double p4 = p[i - 1];
+    double ro_p4 = ro_p[i - 1];
+    double p_p4 = p_p[i - 1];
+    double u4 = u[i - 1];
+
+    //printf("%lf  __  %lf \n", ro1 * u1 * u1/kv(br(r + dx/2.0)), ro3 * u3 * u3 / kv(br(r + dx / 2.0)));
+
+    double roL = ro1;
+    double pL = p1;
+    double ro_pL = ro_p1;
+    double p_pL = p_p1;
+    double uL = u1;
+    double roR = ro3;
+    double pR = p3;
+    double ro_pR = ro_p3;
+    double p_pR = p_p3;
+    double uR = u3;
+    double PQ;
+
+    if (i > 1 && i < *N - 2)
+    {
+        roL = linear(r - dx, ro4, r, ro1, r + dx, ro3, r + dx / 2.0);
+        pL = linear(r - dx, p4, r, p1, r + dx, p3, r + dx / 2.0);
+        ro_pL = linear(r - dx, ro_p4, r, ro_p1, r + dx, ro_p3, r + dx / 2.0);
+        p_pL = linear(r - dx, p_p4, r, p_p1, r + dx, p_p3, r + dx / 2.0);
+        uL = linear(r - dx, u4, r, u1, r + dx, u3, r + dx / 2.0);
+        if (roL <= 0.0)
+        {
+            roL = ro1;
+        }
+        if (pL <= 0.0)
+        {
+            pL = p1;
+        }
+        if (ro_pL <= 0.0)
+        {
+            ro_pL = ro_p1;
+        }
+        if (p_pL <= 0.0)
+        {
+            p_pL = p_p1;
+        }
+
+        roR = linear(r, ro1, r + dx, ro3, r + 2.0 * dx, ro[i + 2], r + dx / 2.0);
+        pR = linear(r, p1, r + dx, p3, r + 2.0 * dx, p[i + 2], r + dx / 2.0);
+        ro_pR = linear(r, ro_p1, r + dx, ro_p3, r + 2.0 * dx, ro_p[i + 2], r + dx / 2.0);
+        p_pR = linear(r, p_p1, r + dx, p_p3, r + 2.0 * dx, p_p[i + 2], r + dx / 2.0);
+        uR = linear(r, u1, r + dx, u3, r + 2.0 * dx, u[i + 2], r + dx / 2.0);
+        if (roR <= 0.0)
+        {
+            roR = ro3;
+        }
+        if (pR <= 0.0)
+        {
+            pR = p3;
+        }
+        if (ro_pR <= 0.0)
+        {
+            ro_pR = ro_p3;
+        }
+        if (p_pR <= 0.0)
+        {
+            p_pR = p_p3;
+        }
+
+    }
+
+    double PP, RO;
+    //time2 = min(time2, HLLC_2d_Korolkov_b_s(roL, ro_pL, pL, uL, 0.0, p_pL, roR, ro_pR, pR, uR, 0.0, p_pR, 0.0, P, PQ, 1.0, 0.0, dx, RO, PP));
+    time2 = min(time2, HLLDQ_Korolkov(roL, 1.0, pL, uL, 0.0, 0.0, br(r + dx / 2.0), by[i], 0.0, //
+        roR, 1.0, pR, uR, 0.0, 0.0, br(r + dx / 2.0), by[i + 1], 0.0, P, PQ, 1.0, 0.0, 0.0, dx, 2));
+    B1 = P[0];
+    B2 = P[1];
+    B3 = P[7];  // 4
+    B4 = P[5];
+
+    //time2 = min(time2, HLLC_2d_Korolkov_b_s(ro_pL, 1.0, p_pL, uL, 0.0, 1.0, ro_pR, 1.0, p_pR, uR, 0.0, 1.0, 0.0, P, PQ, 1.0, 0.0, dx, RO, PP));
+    time2 = min(time2, HLLDQ_Korolkov(ro_pL, 1.0, p_pL, uL, 0.0, 0.0, br(r + dx / 2.0), by[i], 0.0, //
+        ro_pR, 1.0, p_pR, uR, 0.0, 0.0, br(r + dx / 2.0), by[i + 1], 0.0, P, PQ, 1.0, 0.0, 0.0, dx, 2));
+    Bp1 = P[0];
+    Bp2 = P[1];
+    Bp3 = P[7];  // 4
+    Bp4 = P[5];
+
+
+    roL = ro1;
+    pL = p1;
+    ro_pL = ro_p1;
+    p_pL = p_p1;
+    uL = u1;
+    roR = ro4;
+    pR = p4;
+    ro_pR = ro_p4;
+    p_pR = p_p4;
+    uR = u4;
+
+    if (i > 1 && i < *N - 2)
+    {
+        roL = linear(r - dx, ro4, r, ro1, r + dx, ro3, r - dx / 2.0);
+        pL = linear(r - dx, p4, r, p1, r + dx, p3, r - dx / 2.0);
+        ro_pL = linear(r - dx, ro_p4, r, ro_p1, r + dx, ro_p3, r - dx / 2.0);
+        p_pL = linear(r - dx, p_p4, r, p_p1, r + dx, p_p3, r - dx / 2.0);
+        uL = linear(r - dx, u4, r, u1, r + dx, u3, r - dx / 2.0);
+        if (roL <= 0.0)
+        {
+            roL = ro1;
+        }
+        if (pL <= 0.0)
+        {
+            pL = p1;
+        }
+        if (ro_pL <= 0.0)
+        {
+            ro_pL = ro_p1;
+        }
+        if (p_pL <= 0.0)
+        {
+            p_pL = p_p1;
+        }
+
+        roR = linear(r - 2.0 * dx, ro[i - 2], r - dx, ro4, r, ro1, r - dx / 2.0);
+        pR = linear(r - 2.0 * dx, p[i - 2], r - dx, p4, r, p1, r - dx / 2.0);
+        ro_pR = linear(r - 2.0 * dx, ro_p[i - 2], r - dx, ro_p4, r, ro_p1, r - dx / 2.0);
+        p_pR = linear(r - 2.0 * dx, p_p[i - 2], r - dx, p_p4, r, p_p1, r - dx / 2.0);
+        uR = linear(r - 2.0 * dx, u[i - 2], r - dx, u4, r, u1, r - dx / 2.0);
+        if (roR <= 0.0)
+        {
+            roR = ro4;
+        }
+        if (pR <= 0.0)
+        {
+            pR = p4;
+        }
+        if (ro_pR <= 0.0)
+        {
+            ro_pR = ro_p4;
+        }
+        if (p_pR <= 0.0)
+        {
+            p_pR = p_p4;
+        }
+
+    }
+
+    PP = 0.0;
+    RO = 0.0;
+    //time2 = min(time2, HLLC_2d_Korolkov_b_s(roL, ro_pL, pL, uL, 0.0, p_pL, roR, ro_pR, pR, uR, 0.0, p_pR, 0.0, P, PQ, -1.0, 0.0, dx, RO, PP));
+    time2 = min(time2, HLLDQ_Korolkov(roL, 1.0, pL, uL, 0.0, 0.0, br(r - dx / 2.0), by[i], 0.0, //
+        roR, 1.0, pR, uR, 0.0, 0.0, br(r - dx / 2.0), by[i - 1], 0.0, P, PQ, -1.0, 0.0, 0.0, dx, 2));
+
+    B1 = B1 + P[0];
+    B2 = B2 + P[1];
+    B3 = B3 + P[7];  // 4
+    B4 = B4 + P[5];  // 4
+
+    //time2 = min(time2, HLLC_2d_Korolkov_b_s(ro_pL, 1.0, p_pL, uL, 0.0, 1.0, ro_pR, 1.0, p_pR, uR, 0.0, 1.0, 0.0, P, PQ, -1.0, 0.0, dx, RO, PP));
+    time2 = min(time2, HLLDQ_Korolkov(ro_pL, 1.0, p_pL, uL, 0.0, 0.0, br(r - dx / 2.0), by[i], 0.0, //
+        ro_pR, 1.0, p_pR, uR, 0.0, 0.0, br(r - dx / 2.0), by[i - 1], 0.0, P, PQ, -1.0, 0.0, 0.0, dx, 2));
+
+    Bp1 = Bp1 + P[0];
+    Bp2 = Bp2 + P[1];
+    Bp3 = Bp3 + P[7];
+    Bp4 = Bp4 + P[5];
+
+
+
+
+    // Система уравнений 2-флюида
+
+    double pp = p_p1;
+    double roo = ro_p1;
+
+    double roH = n_H * exp(-r0 / r);
+    double UH = sqrt(kv(v_H - u1) + 4.0 / pi * (kv(c_H) + pp / roo));
+    double UMH = sqrt(kv(v_H - u1) + 64.0 / (9.0 * pi) * (kv(c_H) + pp / roo));
+    double nu = Kn * roo * roH * UMH * sigma(UMH);
+    double Q1, Q2, Q3, Q1pi, Q3p;
+    Q1 = 0.0;
+    Q2 = nu * (v_H - u1);
+    Q3 = nu * (0.5 * (kv(v_H) - kv(u1)) + (kv(c_H) - pp / roo) * UH / UMH);
+    Q1pi = -Kn * roo * roH * UH * sigma(UH);// +0.0 * nu * (0.5 * (kv(v_H - u1)) + (kv(c_H) - p_pp / ro_pp) * UH / UMH);
+    Q3p = 0.0; //0.03 * nu * (0.5 * (kv(v_H - u1)) + (kv(c_H) - pp / roo) * UH / UMH);
+
+    //printf("%lf, %lf\n", Q3, Q3p);
+
+    double bb = br(r) * br(r) + by[i] * by[i];
+    double sk = br(r) * u1;
+
+    //double ddb = ((br(r) * br(r) + by[i] * by[i] / 2.0) - (br(r - dx) * br(r - dx) + by[i - 1] * by[i - 1] / 2.0)) / (4.0 * pi * dx);
+
+    ro2[i] = -*T_do * (B1 / dx - Q1 - (2.0 / r) * (-ro1 * u1)) + ro1;
+
+    if (ro2[i] < 0.0)
+    {
+        printf("ERROR  707  ro < 0 = %lf __  %lf \n", r, ro2[i]);
+        ro2[i] = 0.000001;
+    }
+
+    u2[i] = (-*T_do * (B2 / dx - Q2 + (2.0 / r) * (ro1 * u1 * u1 - br(r) * br(r)/(4.0 * pi) + by[i] * by[i]/(8.0 * pi))) + ro1 * u1) / ro2[i];
+    //u2[i] = (-*T_do * (B2 / dx + ddb - Q2 + (2.0 / r) * (ro1 * u1 * u1 + (bb + by[i] * by[i])/(8.0 * pi))) + ro1 * u1) / ro2[i];
+
+    by2[i] = -*T_do * (B4 / dx + (1.0 / r) * (by[i] * u1)) + by[i];
+
+    double bb2 = br(r) * br(r) + by2[i] * by2[i];
+
+    p2[i] = (-*T_do * (B3 / dx - Q3 + (2.0 / r) * ((ggg * p1 * u1) / (ggg - 1.0) + ro1 * u1 * u1 * u1 / 2.0 + u1 * bb / (4.0 * pi) - br(r)*sk / (4.0 * pi))) + //
+        p1 / (ggg - 1.0) + (ro1 * u1 * u1 / 2.0 - ro2[i] * u2[i] * u2[i] / 2.0 ) + (bb/(8.0 * pi)  - bb2/(8.0 * pi))) * (ggg - 1.0);
+
+    //p2[i] = (-*T_do * (B3 / dx - Q3 + (2.0 / r) * ((ggg * p1 * u1) / (ggg - 1.0) + ro1 * u1 * u1 * u1 / 2.0 + u1 * by[i] * by[i] /(4.0 * pi))) + //
+    //    p1 / (ggg - 1.0) + (ro1 * u1 * u1 / 2.0 - ro2[i] * u2[i] * u2[i] / 2.0) + (bb / (8.0 * pi) - bb2 / (8.0 * pi))) * (ggg - 1.0);
+   
+    if (p2[i] < 0.0)
+    {
+        printf("ERROR  700  p2 < 0 = %lf __  %10lf \n", r, p2[i]);
+        printf("%13.10lf __  %13.10lf__  %10lf__  %10lf \n", p1 / (ggg - 1.0), (ro1* u1* u1 / 2.0 - ro2[i] * u2[i] * u2[i] / 2.0), //
+            (bb / (8.0 * pi) - bb2 / (8.0 * pi)), p1 / (ggg - 1.0) + (ro1 * u1 * u1 / 2.0 - ro2[i] * u2[i] * u2[i] / 2.0) + (bb / (8.0 * pi) - bb2 / (8.0 * pi)));
+        p2[i] = 0.000001;
+    }
+
+    ro_p2[i] =  -*T_do * (Bp1 / dx - Q1pi - (2.0 / r) * (-ro_p1 * u1)) + ro_p1;
+    double Q = (ro_p2[i] * u2[i] - ro_p1 * u1) / *T_do + Bp2 / dx + (2.0 / r) * (ro_p1 * u1 * u1 - br(r) * br(r) / (4.0 * pi) + by[i] * by[i] / (8.0 * pi));
+    
+    //p_p2[i] = ((-*T_do * (Bp3 / dx - (Q3p - Q1pi * (0.5 * kv(u1) + p_p1 / g1) + Q * u1) - (2.0 / r) * (-(ggg * p_p1 * u1) / (ggg - 1.0) - ro_p1 * u1 * u1 * u1 / 2.0 - u1 * bb / (4.0 * pi) + br(r) * sk / (4.0 * pi) - u1 * bb / (4.0 * pi) + br(r) * sk / (4.0 * pi))) + //
+    //    p_p1 / (ggg - 1.0) + ro_p1 * u1 * u1 / 2.0 + bb / (8.0 * pi)) - ro_p2[i] * u2[i] * u2[i] / 2.0 - bb2 / (8.0 * pi)) * (ggg - 1.0);
+
+    p_p2[i] = (-*T_do * (Bp3 / dx - (Q3p - Q1pi * (0.5 * kv(u1) + p_p1 / g1) + Q * u1) + (2.0 / r) * ((ggg * p_p1 * u1) / (ggg - 1.0) + ro_p1 * u1 * u1 * u1 / 2.0 + u1 * bb / (4.0 * pi) - br(r) * sk / (4.0 * pi))) + //
+        p_p1 / (ggg - 1.0) + (ro_p1 * u1 * u1 / 2.0 - ro_p2[i] * u2[i] * u2[i] / 2.0 ) + (bb / (8.0 * pi)  - bb2 / (8.0 * pi)) ) * (ggg - 1.0);
+
+
+
+    if (p_p2[i] < 0.0)
+    {
+        printf("ERROR  707  pp2 < 0 = %lf __  %13.10lf  __  %13.10lf \n", r, p_p2[i], p2[i]);
+        printf("%13.10lf __  %13.10lf__  %13.10lf__  %13.10lf __ \n %13.10lf__  %13.10lf\n", p_p1 / (ggg - 1.0), (ro_p1* u1* u1 / 2.0 - ro_p2[i] * u2[i] * u2[i] / 2.0), //
+            (bb / (8.0 * pi) - bb2 / (8.0 * pi)), p_p1 / (ggg - 1.0) + (ro_p1 * u1 * u1 / 2.0 - ro_p2[i] * u2[i] * u2[i] / 2.0) + (bb / (8.0 * pi) - bb2 / (8.0 * pi)), //
+            Q, (Bp3 / dx - (Q3p - Q1pi * (0.5 * kv(u1) + p_p1 / g1) + Q * u1) - (2.0 / r) * (-(ggg * p_p1 * u1) / (ggg - 1.0) - ro_p1 * u1 * u1 * u1 / 2.0 - u1 * bb / (4.0 * pi) + br(r) * sk / (4.0 * pi) - u1 * bb / (4.0 * pi) + br(r) * sk / (4.0 * pi))));
+        p_p2[i] = 0.000001;
+    }
+
+    if (ro_p2[i] < 0.0)
+    {
+        printf("ERROR  707  ro2 < 0 = %lf __  %lf \n", r, ro_p2[i]);
+        ro_p2[i] = ro2[i];
+    }
+
+    if (time2 < *T)
+    {
+        *T = time2;
+    }
+
+}
+
+
 
 int main()
 {
@@ -1455,14 +1823,15 @@ cudaError_t addWithCuda(double *ro, double* p, double* u, int& N)
     cout << "Start -2" << endl;
     double* ro2, * p2;
     double* dev_ro, * dev_p, * dev_u, * dev_ro2, * dev_p2, * dev_u2, * dev_ro_p, * dev_ro_p2, * dev_p_p, * dev_p_p2;
-    double* ro_, * p_, * u_, * rop_, * pp_;
+    double* dev_by, * dev_by2, *by;
+    double* ro_, * p_, * u_, * rop_, * pp_, *by_;
     double* dev_T_all;
     double* dev_T_do;
     double* T_all;
     double* T_do, * T, * dev_T;
-    double* Time_Omni, * Ro_Omni, * P_Omni, * U_Omni;
+    double* Time_Omni, * Ro_Omni, * P_Omni, * U_Omni, * V_Omni, * W_Omni;
     double* Time_V, * Ro_V, * P_V, * U_V, * Dist_V;
-    double* dev_Time_Omni, * dev_Ro_Omni, * dev_P_Omni, * dev_U_Omni;
+    double* dev_Time_Omni, * dev_Ro_Omni, * dev_P_Omni, * dev_U_Omni, * dev_V_Omni, * dev_W_Omni;
     double* dev_Time_V, * dev_Ro_V, * dev_P_V, * dev_U_V, * dev_Dist_V;
     cudaError_t cudaStatus;
     int N_V = 127476;               // число данных Вояджера, должно быть фиксированным
@@ -1494,6 +1863,8 @@ cudaError_t addWithCuda(double *ro, double* p, double* u, int& N)
     Ro_Omni = new double[N_O1];
     P_Omni = new double[N_O1];
     U_Omni = new double[N_O1];
+    V_Omni = new double[N_O1];
+    W_Omni = new double[N_O1];
     Time_Omni = new double[N_O1];
     mas_Omni = new int[1];
     ro = new double[N];
@@ -1506,6 +1877,8 @@ cudaError_t addWithCuda(double *ro, double* p, double* u, int& N)
     rop_ = new double[N];
     pp_ = new double[N];
     u_ = new double[N];
+    by = new double[N];
+    by_ = new double[N];
     voy = new int[1];
     mas_V = new int[1];
     j1 = new double[1];
@@ -1519,7 +1892,8 @@ cudaError_t addWithCuda(double *ro, double* p, double* u, int& N)
 
     cout << "Start 0" << endl;
 
-    takeDataOmni(Ro_Omni, P_Omni, U_Omni, Time_Omni, N_O1, N_O2);
+    //takeDataOmni(Ro_Omni, P_Omni, U_Omni, Time_Omni, N_O1, N_O2);
+    takeDataOmni2(Ro_Omni, P_Omni, U_Omni, V_Omni, W_Omni, Time_Omni, N_O1, N_O2);
 
     cout << "Start 01" << endl;
     // Заполняем начальные условия
@@ -1532,6 +1906,7 @@ cudaError_t addWithCuda(double *ro, double* p, double* u, int& N)
         ro2[i] = 1.0 / (r * r); //0.000001 / (r * r);
         p[i] =  pE * pow(1.0 / r, 2.0 * ggg);
         u[i] = 1.0;
+        by[i] = 0.292303/r;
     }
 
     cout << "Start 1" << endl;
@@ -1586,6 +1961,18 @@ cudaError_t addWithCuda(double *ro, double* p, double* u, int& N)
             goto Error;
         }
 
+        cudaStatus = cudaMalloc((void**)&dev_by, N * sizeof(double));
+        if (cudaStatus != cudaSuccess) {
+            fprintf(stderr, "cudaMalloc failed!");
+            goto Error;
+        }
+
+        cudaStatus = cudaMalloc((void**)&dev_by2, N * sizeof(double));
+        if (cudaStatus != cudaSuccess) {
+            fprintf(stderr, "cudaMalloc failed!");
+            goto Error;
+        }
+
         cudaStatus = cudaMalloc((void**)&dev_ro2, N * sizeof(double));
         if (cudaStatus != cudaSuccess) {
             fprintf(stderr, "cudaMalloc failed!");
@@ -1635,6 +2022,18 @@ cudaError_t addWithCuda(double *ro, double* p, double* u, int& N)
         }
 
         cudaStatus = cudaMalloc((void**)&dev_U_Omni, N_O1 * sizeof(double));
+        if (cudaStatus != cudaSuccess) {
+            fprintf(stderr, "cudaMalloc failed!");
+            goto Error;
+        }
+
+        cudaStatus = cudaMalloc((void**)&dev_V_Omni, N_O1 * sizeof(double));
+        if (cudaStatus != cudaSuccess) {
+            fprintf(stderr, "cudaMalloc failed!");
+            goto Error;
+        }
+
+        cudaStatus = cudaMalloc((void**)&dev_W_Omni, N_O1 * sizeof(double));
         if (cudaStatus != cudaSuccess) {
             fprintf(stderr, "cudaMalloc failed!");
             goto Error;
@@ -1760,6 +2159,18 @@ cudaError_t addWithCuda(double *ro, double* p, double* u, int& N)
             goto Error;
         }
 
+        cudaStatus = cudaMemcpy(dev_V_Omni, V_Omni, N_O1 * sizeof(double), cudaMemcpyHostToDevice);
+        if (cudaStatus != cudaSuccess) {
+            fprintf(stderr, "cudaMemcpy failed!");
+            goto Error;
+        }
+
+        cudaStatus = cudaMemcpy(dev_W_Omni, W_Omni, N_O1 * sizeof(double), cudaMemcpyHostToDevice);
+        if (cudaStatus != cudaSuccess) {
+            fprintf(stderr, "cudaMemcpy failed!");
+            goto Error;
+        }
+
         cudaStatus = cudaMemcpy(dev_Ro_Omni, Ro_Omni, N_O1 * sizeof(double), cudaMemcpyHostToDevice);
         if (cudaStatus != cudaSuccess) {
             fprintf(stderr, "cudaMemcpy failed!");
@@ -1779,6 +2190,18 @@ cudaError_t addWithCuda(double *ro, double* p, double* u, int& N)
         }
 
         cudaStatus = cudaMemcpy(dev_ro2, ro, N * sizeof(double), cudaMemcpyHostToDevice);
+        if (cudaStatus != cudaSuccess) {
+            fprintf(stderr, "cudaMemcpy failed!");
+            goto Error;
+        }
+
+        cudaStatus = cudaMemcpy(dev_by, by, N * sizeof(double), cudaMemcpyHostToDevice);
+        if (cudaStatus != cudaSuccess) {
+            fprintf(stderr, "cudaMemcpy failed!");
+            goto Error;
+        }
+
+        cudaStatus = cudaMemcpy(dev_by2, by, N * sizeof(double), cudaMemcpyHostToDevice);
         if (cudaStatus != cudaSuccess) {
             fprintf(stderr, "cudaMemcpy failed!");
             goto Error;
@@ -1864,7 +2287,8 @@ cudaError_t addWithCuda(double *ro, double* p, double* u, int& N)
     while (*mas_V < 127470) // (*T_all < 60.0)//
     {
         step++;
-        takeOmni << <1, 1 >> > (dev_ro, dev_p, dev_ro_p, dev_p_p, dev_u, dev_Ro_Omni, dev_P_Omni, dev_U_Omni, dev_Time_Omni, dev_T_all, dev_mas_Omni);
+        //takeOmni << <1, 1 >> > (dev_ro, dev_p, dev_ro_p, dev_p_p, dev_u, dev_Ro_Omni, dev_P_Omni, dev_U_Omni, dev_Time_Omni, dev_T_all, dev_mas_Omni);
+        takeOmni2 << <1, 1 >> > (dev_ro, dev_p, dev_ro_p, dev_p_p, dev_u, dev_v, dev_w, dev_Ro_Omni, dev_P_Omni, dev_U_Omni, dev_V_Omni, dev_W_Omni, dev_Time_Omni, dev_T_all, dev_mas_Omni);
        
         takeVoyadger << <1, 1 >> > (dev_T_do, dev_T_all, dev_Time_V, dev_mas_V, dev_voy);
 
@@ -1872,8 +2296,11 @@ cudaError_t addWithCuda(double *ro, double* p, double* u, int& N)
         //calcul << < (int)(1.0 * *NN / THREADS_PER_BLOCK) + 1, THREADS_PER_BLOCK >> > (dev_ro, dev_u, dev_p, dev_ro2, dev_u2, dev_p2,//
         //    dev_T, dev_T_do, dev_N);
 
-        calcul_component << < (int)(1.0 * *NN / THREADS_PER_BLOCK) + 1, THREADS_PER_BLOCK >> > (dev_ro, dev_u, dev_p, dev_ro2, dev_u2, dev_p2,//
-            dev_ro_p, dev_ro_p2, dev_p_p, dev_p_p2, dev_T, dev_T_do, dev_N);
+        //calcul_component << < (int)(1.0 * *NN / THREADS_PER_BLOCK) + 1, THREADS_PER_BLOCK >> > (dev_ro, dev_u, dev_p, dev_ro2, dev_u2, dev_p2,//
+        //    dev_ro_p, dev_ro_p2, dev_p_p, dev_p_p2, dev_T, dev_T_do, dev_N);
+
+        calcul_component_mgd << < (int)(1.0 * *NN / THREADS_PER_BLOCK) + 1, THREADS_PER_BLOCK >> > (dev_ro, dev_u, dev_p, dev_ro2, dev_u2, dev_p2,//
+            dev_ro_p, dev_ro_p2, dev_p_p, dev_p_p2, dev_by, dev_by2, dev_T, dev_T_do, dev_N);
 
         funk_time << <1, 1 >> > (dev_T, dev_T_do, dev_T_all);
 
@@ -1919,6 +2346,12 @@ cudaError_t addWithCuda(double *ro, double* p, double* u, int& N)
                     fprintf(stderr, "cudaMemcpy failed!");
                     goto Error;
                 }
+
+                cudaStatus = cudaMemcpy(by_, dev_by2, *NN * sizeof(double), cudaMemcpyDeviceToHost);
+                if (cudaStatus != cudaSuccess) {
+                    fprintf(stderr, "cudaMemcpy failed!");
+                    goto Error;
+                }
                
                 cudaStatus = cudaMemcpy(p_, dev_p2, *NN * sizeof(double), cudaMemcpyDeviceToHost);
                 if (cudaStatus != cudaSuccess) {
@@ -1953,17 +2386,26 @@ cudaError_t addWithCuda(double *ro, double* p, double* u, int& N)
                 cudaFree(dev_p_p);
                 cudaFree(dev_ro_p2);
                 cudaFree(dev_p_p2);
+                cudaFree(dev_by);
+                cudaFree(dev_by2);
                 delete[] ro;
                 delete[] p;
                 delete[] ro2;
                 delete[] p2;
                 delete[] u;
+                delete[] by;
                 ro = new double[kl];
                 p = new double[kl];
                 ro2 = new double[kl];
                 p2 = new double[kl];
                 u = new double[kl];
+                by = new double[kl];
                 cudaStatus = cudaMalloc((void**)&dev_ro, kl * sizeof(double));
+                if (cudaStatus != cudaSuccess) {
+                    fprintf(stderr, "cudaMalloc failed!");
+                    goto Error;
+                }
+                cudaStatus = cudaMalloc((void**)&dev_by, kl * sizeof(double));
                 if (cudaStatus != cudaSuccess) {
                     fprintf(stderr, "cudaMalloc failed!");
                     goto Error;
@@ -1979,6 +2421,11 @@ cudaError_t addWithCuda(double *ro, double* p, double* u, int& N)
                     goto Error;
                 }
                 cudaStatus = cudaMalloc((void**)&dev_ro2, kl * sizeof(double));
+                if (cudaStatus != cudaSuccess) {
+                    fprintf(stderr, "cudaMalloc failed!");
+                    goto Error;
+                }
+                cudaStatus = cudaMalloc((void**)&dev_by2, kl * sizeof(double));
                 if (cudaStatus != cudaSuccess) {
                     fprintf(stderr, "cudaMalloc failed!");
                     goto Error;
@@ -2022,6 +2469,7 @@ cudaError_t addWithCuda(double *ro, double* p, double* u, int& N)
                     ro2[i] = rop_[i];
                     p2[i] = pp_[i];
                     u[i] = u_[i];
+                    by[i] = by_[i];
                 }
                 for (int i = *NN; i < kl; i++)
                 {
@@ -2032,8 +2480,14 @@ cudaError_t addWithCuda(double *ro, double* p, double* u, int& N)
                     p[i] = pE * pow(1.0 / r, 2.0 * ggg);
                     p2[i] = pE * pow(1.0 / r, 2.0 * ggg);
                     u[i] = 1.0;
+                    by[i] = 0.292303 / r;
                 }
                 cudaStatus = cudaMemcpy(dev_ro2, ro, kl * sizeof(double), cudaMemcpyHostToDevice);
+                if (cudaStatus != cudaSuccess) {
+                    fprintf(stderr, "cudaMemcpy failed!");
+                    goto Error;
+                }
+                cudaStatus = cudaMemcpy(dev_by2, by, kl * sizeof(double), cudaMemcpyHostToDevice);
                 if (cudaStatus != cudaSuccess) {
                     fprintf(stderr, "cudaMemcpy failed!");
                     goto Error;
@@ -2070,23 +2524,30 @@ cudaError_t addWithCuda(double *ro, double* p, double* u, int& N)
                 delete[] rop_;
                 delete[] pp_;
                 delete[] u_;
+                delete[] by_;
                 ro_ = new double[kl];
                 p_ = new double[kl];
                 u_ = new double[kl];
                 rop_ = new double[kl];
                 pp_ = new double[kl];
+                by_ = new double[kl];
             }
         }
 
-        takeOmni << <1, 1 >> > (dev_ro2, dev_p2, dev_ro_p2, dev_p_p2, dev_u2, dev_Ro_Omni, dev_P_Omni, dev_U_Omni, dev_Time_Omni, dev_T_all, dev_mas_Omni);
+        //takeOmni << <1, 1 >> > (dev_ro2, dev_p2, dev_ro_p2, dev_p_p2, dev_u2, dev_Ro_Omni, dev_P_Omni, dev_U_Omni, dev_Time_Omni, dev_T_all, dev_mas_Omni);
+        takeOmni << <1, 1 >> > (dev_ro2, dev_p2, dev_ro_p2, dev_p_p2, dev_u2, dev_v2, dev_w2, dev_Ro_Omni, dev_P_Omni, dev_U_Omni, dev_V_Omni, dev_W_Omni, dev_Time_Omni, dev_T_all, dev_mas_Omni);
+        
         takeVoyadger << <1, 1 >> > (dev_T_do, dev_T_all, dev_Time_V, dev_mas_V, dev_voy);
         
         // Launch a kernel on the GPU with one thread for each element.
         //calcul << < (int)(1.0 * *NN / THREADS_PER_BLOCK) + 1, THREADS_PER_BLOCK >> > (dev_ro2, dev_u2, dev_p2, dev_ro, dev_u, dev_p,//
         //    dev_T, dev_T_do, dev_N);
 
-        calcul_component << < (int)(1.0 * *NN / THREADS_PER_BLOCK) + 1, THREADS_PER_BLOCK >> > (dev_ro2, dev_u2, dev_p2, dev_ro, dev_u, dev_p,//
-            dev_ro_p2, dev_ro_p, dev_p_p2, dev_p_p, dev_T, dev_T_do, dev_N);
+        //calcul_component << < (int)(1.0 * *NN / THREADS_PER_BLOCK) + 1, THREADS_PER_BLOCK >> > (dev_ro2, dev_u2, dev_p2, dev_ro, dev_u, dev_p,//
+        //    dev_ro_p2, dev_ro_p, dev_p_p2, dev_p_p, dev_T, dev_T_do, dev_N);
+
+        calcul_component_mgd << < (int)(1.0 * *NN / THREADS_PER_BLOCK) + 1, THREADS_PER_BLOCK >> > (dev_ro2, dev_u2, dev_p2, dev_ro, dev_u, dev_p,//
+            dev_ro_p2, dev_ro_p, dev_p_p2, dev_p_p, dev_by2, dev_by, dev_T, dev_T_do, dev_N);
 
         funk_time << <1, 1 >> > (dev_T, dev_T_do, dev_T_all);
 
@@ -2159,13 +2620,24 @@ cudaError_t addWithCuda(double *ro, double* p, double* u, int& N)
             if (*mas_Omni > 0.85 * N_O1)
             {
                 N_O2 += (*mas_Omni - 1);
-                takeDataOmni(Ro_Omni, P_Omni, U_Omni, Time_Omni, N_O1, N_O2);
+                //takeDataOmni(Ro_Omni, P_Omni, U_Omni, Time_Omni, N_O1, N_O2);
+                takeDataOmni2(Ro_Omni, P_Omni, U_Omni, V_Omni, W_Omni, Time_Omni, N_O1, N_O2);
                 cudaStatus = cudaMemcpy(dev_Time_Omni, Time_Omni, N_O1 * sizeof(double), cudaMemcpyHostToDevice);
                 if (cudaStatus != cudaSuccess) {
                     fprintf(stderr, "cudaMemcpy failed 10!");
                     goto Error;
                 }
                 cudaStatus = cudaMemcpy(dev_U_Omni, U_Omni, N_O1 * sizeof(double), cudaMemcpyHostToDevice);
+                if (cudaStatus != cudaSuccess) {
+                    fprintf(stderr, "cudaMemcpy failed 11!");
+                    goto Error;
+                }
+                cudaStatus = cudaMemcpy(dev_V_Omni, V_Omni, N_O1 * sizeof(double), cudaMemcpyHostToDevice);
+                if (cudaStatus != cudaSuccess) {
+                    fprintf(stderr, "cudaMemcpy failed 11!");
+                    goto Error;
+                }
+                cudaStatus = cudaMemcpy(dev_W_Omni, W_Omni, N_O1 * sizeof(double), cudaMemcpyHostToDevice);
                 if (cudaStatus != cudaSuccess) {
                     fprintf(stderr, "cudaMemcpy failed 11!");
                     goto Error;
@@ -2275,13 +2747,19 @@ cudaError_t addWithCuda(double *ro, double* p, double* u, int& N)
         goto Error;
     }
 
+    cudaStatus = cudaMemcpy(by, dev_by, *NN * sizeof(double), cudaMemcpyDeviceToHost);
+    if (cudaStatus != cudaSuccess) {
+        fprintf(stderr, "cudaMemcpy failed!");
+        goto Error;
+    }
+
     
     fout2.open("save_2.txt");
     fout2 << *T_all << " " << *NN << endl;
     for (int i = 0; i < *NN; i++)
     {
         double r = L + i * dx;
-        fout2 << r << " " << ro[i] << " " << p[i] << " " << u[i] << " " << ro2[i] << " " << p2[i] << endl;
+        fout2 << r << " " << ro[i] << " " << p[i] << " " << u[i] << " " << ro2[i] << " " << p2[i] << " " << by[i] << endl;
         //fout2 << r << " " << (ro2[i] - ro[i])  * 7.0 << " " << p[i] << " " << u[i] * 375.0 << " " << p[i]/ (2.0 * (ro2[i] - ro[i]) * 5.86922 * 0.00000001) << " " << p2[i] / (2.0 * ro2[i] * 5.86922 * 0.00000001) <<  endl;
     }
     fout2.close();
