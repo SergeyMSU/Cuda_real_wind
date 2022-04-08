@@ -78,9 +78,16 @@ __global__ void addKernel(int *c, const int *a, const int *b)
 
 __global__ void funk_time(double* T, double* T_do, double* TT)
 {
-    *T_do = *T;
     *TT = *TT + *T_do;
+    *T_do = *T;
     *T = 0.1 * day;// 0.5 * minut;
+    return;
+}
+
+
+__global__ void funk_time_devide(double* T_do)
+{
+    *T_do = *T_do / 4.0;
     return;
 }
 
@@ -1057,8 +1064,8 @@ __global__ void takeVoyadger2_2(double* ro, double* ro2, double* p, double* u, d
 
 __global__ void init_time(double* T_do, double* T)
 {
-    *T_do = 0.001 * minut;
-    *T = 0.001 * minut;
+    *T_do = 0.0001 * minut;
+    *T = 5.0 * minut;
 }
 
 __global__ void calcul(double* ro, double* u, double* p, double* ro2, double* u2, double* p2,//
@@ -1497,7 +1504,7 @@ __global__ void calcul_component(double* ro, double* u, double* p, double* ro2, 
 }
 
 __global__ void calcul_component_2(double* ro, double* u, double* v, double* w, double* p, double* ro2, double* u2, double* v2, double* w2, double* p2, double* ro_p, double* ro_p2, double* p_p, double* p_p2,//
-    double* T, double* T_do, int* N)
+    double* T, double* T_do, int* N, int* dev_mas_V, bool* boo, double kk = 1.0)
 {
     // С тангенциальными компонентами скорости
     int i = blockIdx.x * blockDim.x + threadIdx.x;   // Глобальный индекс текущей ячейки (текущего потока)
@@ -1546,7 +1553,28 @@ __global__ void calcul_component_2(double* ro, double* u, double* v, double* w, 
     double Bp5 = 0.0;
     double B_pi1 = 0.0;
     double B_p3 = 0.0;
-    double time2 = 0.5 * minut;  // 0.3
+    double time2 = minut/kk;
+    /*if (*dev_mas_V < 4000)
+    {
+        time2 = 1.0 * minut;
+    }
+    else if (*dev_mas_V < 6000)
+    {
+        time2 = 0.3 * minut;
+    }
+    else if (*dev_mas_V < 7500)
+    {
+        time2 = 1.0 * minut;
+    }
+    else if (*dev_mas_V < 8500)
+    {
+        time2 = 0.3 * minut;
+    }
+    else
+    {
+        time2 = 1.0 * minut;
+    }*/
+
     double ro1 = ro[i];
     double p1 = p[i];
     double ro_p1 = ro_p[i];
@@ -1771,14 +1799,15 @@ __global__ void calcul_component_2(double* ro, double* u, double* v, double* w, 
     v2[i] = (-*T_do * (B3 / dx - Q22 - (3.0 / r) * (-ro1 * u1 * v1)) + ro1 * v1) / ro2[i];
     w2[i] = (-*T_do * (B4 / dx - Q23 - (3.0 / r) * (-ro1 * u1 * w1)) + ro1 * w1) / ro2[i];
 
-    double uu = kv(u1) + kv(v1) + kv(w1);
-    double uu2 = kv(u2[i]) + kv(v2[i]) + kv(w2[i]);
+    //double uu = kv(u1) + kv(v1) + kv(w1);
+    //double uu2 = kv(u2[i]) + kv(v2[i]) + kv(w2[i]);
 
     //p2[i] = (-*T_do * (B5 / dx - Q3 - (2.0 / r) * (-(ggg * p1 * u1) / (ggg - 1.0) - ro1 * uu * u1 / 2.0)) + //
-     //    (ro1 * uu / 2.0 - ro2[i] * uu2 / 2.0) + p1 / (ggg - 1.0) ) * (ggg - 1.0);
+    //     (ro1 * uu / 2.0 - ro2[i] * uu2 / 2.0) + p1 / (ggg - 1.0) ) * (ggg - 1.0);
 
-    p2[i] = (-*T_do * B5 / dx + *T_do * (2.0 / r) * ( - ro1 * uu * u1 / 2.0) + //
-        (ro1 * uu / 2.0 - ro2[i] * uu2 / 2.0) + p1 / (ggg - 1.0) - *T_do * (2.0 / r) * ((ggg * p1 * u1) / (ggg - 1.0)) + *T_do * Q3) * (ggg - 1.0);
+    p2[i] = (-*T_do * (B5 / dx - Q3 - (2.0 / r) * (-(ggg * p1 * u1) / (ggg - 1.0) - ro1 * (kv(u1) + kv(v1) + kv(w1)) * u1 / 2.0)) + //
+        (ro1 * (kv(u1) + kv(v1) + kv(w1)) / 2.0 - ro2[i] * (kv(u2[i]) + kv(v2[i]) + kv(w2[i])) / 2.0) + p1 / (ggg - 1.0)) * (ggg - 1.0);
+
 
     ro_p2[i] = ro2[i];// -*T_do * (Bp1 / dx - Q1pi - (2.0 / r) * (-ro_p1 * u1)) + ro_p1;
     //double M1, M2, M3;
@@ -1794,11 +1823,12 @@ __global__ void calcul_component_2(double* ro, double* u, double* v, double* w, 
 
 
 
-    if (p_p2[i] < 0.0)
+    if (p2[i] < 0.0)
     {
-        printf("ERROR  707  p < 0 = %lf __  %lf \n", r, p_p2[i]);
-        p_p2[i] = p2[i];
-        time2 = 0.5 * time2;
+        printf("ERROR  707  p < 0 = %lf  __  %lf  __  %lf \n", r, p2[i], *T_do);
+        p2[i] = p[i];
+        time2 = 0.1 * time2;
+        *boo = false;
     }
 
     if (ro_p2[i] < 0.0)
@@ -2182,15 +2212,20 @@ cudaError_t addWithCuda(double *ro, double* p, double* u, int& N)
     int* dev_mas_Omni, * mas_Omni;
     int* dev_N;
     int* NN;
+    bool* dev_boo;
     double* j1, * j2, * j3, * dev_j1, * dev_j2, * dev_j3;
     ofstream fout2;
     int step = 0;
     int* voy, * dev_voy;  // Печатаем ли данные вояджера?
+    bool* boo;
+    double kk = 1.0;
+    int kk_int = 0;
     ofstream fout5;
     fout5.open("voyadger2_calculations.txt");// , ios_base::out | ios_base::app);
 
     cout << "Start -1" << endl;
 
+    boo = new bool[1];
     NN = new int[1];
     *NN = N;
     Time_V = new double[N_V];
@@ -2231,7 +2266,7 @@ cudaError_t addWithCuda(double *ro, double* p, double* u, int& N)
     *voy = 0;
     *mas_V = 0;
 
-    *T_all = 50.0; //  50.0; // 3600.01 * minut;
+    *T_all = 100.0; // 3600.01 * minut; //  50.0; // 3600.01 * minut;
 
     cout << "Start 0" << endl;
 
@@ -2276,6 +2311,8 @@ cudaError_t addWithCuda(double *ro, double* p, double* u, int& N)
     }
 
     cout << "Start 2" << endl;
+
+
 
     // Выделяем память на CUDA
     if (true)
@@ -2346,7 +2383,7 @@ cudaError_t addWithCuda(double *ro, double* p, double* u, int& N)
         if (cudaStatus != cudaSuccess) {
             fprintf(stderr, "cudaMalloc failed!");
             goto Error;
-        }
+        }  
 
         cudaStatus = cudaMalloc((void**)&dev_v2, N * sizeof(double));
         if (cudaStatus != cudaSuccess) {
@@ -2451,6 +2488,12 @@ cudaError_t addWithCuda(double *ro, double* p, double* u, int& N)
         }
 
         cudaStatus = cudaMalloc((void**)&dev_voy, sizeof(int));
+        if (cudaStatus != cudaSuccess) {
+            fprintf(stderr, "cudaMalloc failed!");
+            goto Error;
+        } 
+
+        cudaStatus = cudaMalloc((void**)&dev_boo, sizeof(bool));
         if (cudaStatus != cudaSuccess) {
             fprintf(stderr, "cudaMalloc failed!");
             goto Error;
@@ -2677,6 +2720,8 @@ cudaError_t addWithCuda(double *ro, double* p, double* u, int& N)
 
     init_time << <1, 1 >> > (dev_T_do, dev_T);   // устанавливаем первый шаг по времени
 
+    
+
     while (*mas_V < 127470) // (*T_all < 60.0)//
     {
         step++;
@@ -2692,8 +2737,36 @@ cudaError_t addWithCuda(double *ro, double* p, double* u, int& N)
         //calcul_component << < (int)(1.0 * *NN / THREADS_PER_BLOCK) + 1, THREADS_PER_BLOCK >> > (dev_ro, dev_u, dev_p, dev_ro2, dev_u2, dev_p2,//
         //    dev_ro_p, dev_ro_p2, dev_p_p, dev_p_p2, dev_T, dev_T_do, dev_N);
 
-        calcul_component_2 << < (int)(1.0 * *NN / THREADS_PER_BLOCK) + 1, THREADS_PER_BLOCK >> > (dev_ro, dev_u, dev_v, dev_w, dev_p, dev_ro2, dev_u2, dev_v2, dev_w2, dev_p2,//
-            dev_ro_p, dev_ro_p2, dev_p_p, dev_p_p2, dev_T, dev_T_do, dev_N);
+        do
+        {
+            if (*mas_V > kk_int + 100)
+            {
+                kk = 1.0;
+            }
+
+            *boo = true;
+            cudaStatus = cudaMemcpy(dev_boo, boo, sizeof(bool), cudaMemcpyHostToDevice);
+            if (cudaStatus != cudaSuccess) {
+                fprintf(stderr, "cudaMemcpy failed!");
+                goto Error;
+            }
+            
+            calcul_component_2 << < (int)(1.0 * *NN / THREADS_PER_BLOCK) + 1, THREADS_PER_BLOCK >> > (dev_ro, dev_u, dev_v, dev_w, dev_p, dev_ro2, dev_u2, dev_v2, dev_w2, dev_p2,//
+                dev_ro_p, dev_ro_p2, dev_p_p, dev_p_p2, dev_T, dev_T_do, dev_N, dev_mas_V, dev_boo, kk);
+            
+            cudaStatus = cudaMemcpy(boo, dev_boo, sizeof(bool), cudaMemcpyDeviceToHost);
+            if (cudaStatus != cudaSuccess) {
+                fprintf(stderr, "cudaMemcpy failed!");
+                goto Error;
+            }
+
+            if (*boo == false)
+            {
+                kk = kk * 1.3;
+                kk_int = *mas_V;
+                funk_time_devide << <1, 1 >> > (dev_T_do);
+            }
+        } while (*boo == false);
 
         //calcul_component_mgd << < (int)(1.0 * *NN / THREADS_PER_BLOCK) + 1, THREADS_PER_BLOCK >> > (dev_ro, dev_u, dev_p, dev_ro2, dev_u2, dev_p2,//
         //    dev_ro_p, dev_ro_p2, dev_p_p, dev_p_p2, dev_by, dev_by2, dev_T, dev_T_do, dev_N);
@@ -3001,8 +3074,37 @@ cudaError_t addWithCuda(double *ro, double* p, double* u, int& N)
         //calcul_component << < (int)(1.0 * *NN / THREADS_PER_BLOCK) + 1, THREADS_PER_BLOCK >> > (dev_ro2, dev_u2, dev_p2, dev_ro, dev_u, dev_p,//
         //    dev_ro_p2, dev_ro_p, dev_p_p2, dev_p_p, dev_T, dev_T_do, dev_N);
 
-        calcul_component_2 << < (int)(1.0 * *NN / THREADS_PER_BLOCK) + 1, THREADS_PER_BLOCK >> > (dev_ro2, dev_u2, dev_v2, dev_w2, dev_p2, dev_ro, dev_u, dev_v, dev_w, dev_p,//
-            dev_ro_p2, dev_ro_p, dev_p_p2, dev_p_p, dev_T, dev_T_do, dev_N);
+
+        do
+        {
+            if (*mas_V > kk_int + 100)
+            {
+                kk = 1.0;
+            }
+
+            *boo = true;
+            cudaStatus = cudaMemcpy(dev_boo, boo, sizeof(bool), cudaMemcpyHostToDevice);
+            if (cudaStatus != cudaSuccess) {
+                fprintf(stderr, "cudaMemcpy failed!");
+                goto Error;
+            }
+
+            calcul_component_2 << < (int)(1.0 * *NN / THREADS_PER_BLOCK) + 1, THREADS_PER_BLOCK >> > (dev_ro2, dev_u2, dev_v2, dev_w2, dev_p2, dev_ro, dev_u, dev_v, dev_w, dev_p,//
+                dev_ro_p2, dev_ro_p, dev_p_p2, dev_p_p, dev_T, dev_T_do, dev_N, dev_mas_V, dev_boo, kk);
+
+            cudaStatus = cudaMemcpy(boo, dev_boo, sizeof(bool), cudaMemcpyDeviceToHost);
+            if (cudaStatus != cudaSuccess) {
+                fprintf(stderr, "cudaMemcpy failed!");
+                goto Error;
+            }
+
+            if (*boo == false)
+            {
+                kk = kk * 1.3;
+                kk_int = *mas_V;
+                funk_time_devide << <1, 1 >> > (dev_T_do);
+            }
+        } while (*boo == false);
 
         //calcul_component_mgd << < (int)(1.0 * *NN / THREADS_PER_BLOCK) + 1, THREADS_PER_BLOCK >> > (dev_ro2, dev_u2, dev_p2, dev_ro, dev_u, dev_p,//
         //    dev_ro_p2, dev_ro_p, dev_p_p2, dev_p_p, dev_by2, dev_by, dev_T, dev_T_do, dev_N);
@@ -3073,7 +3175,7 @@ cudaError_t addWithCuda(double *ro, double* p, double* u, int& N)
                 fprintf(stderr, "cudaMemcpy failed 9!");
                 goto Error;
             }
-            cout << *T_all << " " << *mas_Omni << " " << *mas_V << endl;
+            cout << *T_all << " " << *mas_Omni << " " << *mas_V << " " << kk << endl;
 
             // Нужно запустить обновление массивов омни
             if (*mas_Omni > 0.85 * N_O1)

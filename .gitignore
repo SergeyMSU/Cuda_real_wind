@@ -8,3 +8,21 @@
 x64/Debug/
 
 *.vcxproj
+
+dist.txt
+
+info.txt
+
+omni_all_data.txt
+
+omni_all_data_27day.txt
+
+omni_all_data_day.txt
+
+omni_all_data_hour_mgd.txt
+
+omni_all_data_hour.txt
+
+voyager2_all_data_mhd.txt
+
+voyager2_all_data.txt
