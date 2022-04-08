@@ -57,7 +57,7 @@
 #define n_H 0.00714286   // 0.05  Ѕезразмерна€ концентраци€ атомов водорода
 #define r0 2.7268   // Ѕезразмерное r0 в плотности водорода в експоненте
 
-#define data_voy 142676  // 127476  // количество измерений во€джера
+#define data_voy 127391  // 127476  // количество измерений во€джера
 
 using namespace std;
 
@@ -1553,7 +1553,7 @@ __global__ void calcul_component_2(double* ro, double* u, double* v, double* w, 
     double Bp5 = 0.0;
     double B_pi1 = 0.0;
     double B_p3 = 0.0;
-    double time2 = minut/kk;
+    double time2 = 0.5 * minut/kk;
     /*if (*dev_mas_V < 4000)
     {
         time2 = 1.0 * minut;
@@ -1826,9 +1826,13 @@ __global__ void calcul_component_2(double* ro, double* u, double* v, double* w, 
     if (p2[i] < 0.0)
     {
         printf("ERROR  707  p < 0 = %lf  __  %lf  __  %lf \n", r, p2[i], *T_do);
-        p2[i] = p[i];
+        p2[i] = 0.0000001;
+        p_p2[i] = 0.0000001;
         time2 = 0.1 * time2;
-        *boo = false;
+        if (kk < 30.0)
+        {
+            *boo = false;
+        }
     }
 
     if (ro_p2[i] < 0.0)
